@@ -58,7 +58,10 @@ def parse_args():
     return args
 
 
-if __name__ == "__main__":
+
+def run():
+    """This is the entry point for running centinel"""
+
     args = parse_args()
 
     # we need to store some persistent info, so check if a config file
@@ -105,3 +108,7 @@ if __name__ == "__main__":
         centinel.daemonize.daemonize(args.auto_update, args.binary)
     else:
         client.run()
+
+
+if __name__ == "__main__":
+    run()
