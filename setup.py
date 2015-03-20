@@ -22,6 +22,8 @@ setup(
                         "requests >= 2.5.1"],
     include_package_data = True,
     entry_points = {
-        'console_scripts': ['centinel=centinel.client:run']
+        'console_scripts': ['centinel-dev = centinel.cli:run',
+                            'centinel-vpn-dev = centinel.vpn.cli:run']
+
     },
 )
