@@ -7,6 +7,7 @@ import argparse
 import logging
 from random import shuffle
 import os
+import json
 
 import centinel.backend
 import centinel.client
@@ -34,6 +35,9 @@ def parse_args():
                               'separated two letter country codes)'))
     parser.add_argument('--log-file', '-l', dest='log_file', default=None,
                         help="Log file location")
+    parser.add_argument('--include', '-i', dest='include_list', default=None,
+                        help=('Nodes to include when scanning (json '
+                              'format list)'))
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--directory', '-d', dest='directory',
                        help='Directory with experiments, config files, etc.')
@@ -47,7 +51,8 @@ def parse_args():
     return parser.parse_args()
 
 
-def scan_vpns(directory, auth_file, crt_file, exclude_list, shuffle_lists=False):
+def scan_vpns(directory, auth_file, crt_file, exclude_list, shuffle_lists=False,
+              include_list=None):
     """For each VPN, check if there are experiments and scan with it if
     necessary
 
@@ -75,13 +80,28 @@ def scan_vpns(directory, auth_file, crt_file, exclude_list, shuffle_lists=False)
         shuffle(conf_list)
 
     number = 1
-    total = len(conf_list)
+    if include_list is not None:
+        try:
+            with open(include_list, 'r') as fp:
+                include_list = json.load(fp)
+        except Exception:
+            logging.error("include list file does not exist or has wrong format")
+            return
+    else:
+        include_list = conf_list
 
-    for filename in conf_list:
+    total = len(include_list)
+
+    for filename in include_list:
         logging.info("Moving onto (%d/%d) %s" % (number, total, filename))
         print "(%d/%d) %s" % (number, total, filename)
 
         number += 1
+
+        if filename not in conf_list:
+            logging.error("%s does not exist in configs folder" % filename)
+            continue
+
         vpn_config = os.path.join(vpn_dir, filename)
         centinel_config = os.path.join(conf_dir, filename)
 
@@ -254,8 +274,10 @@ def run():
         # create the config files for the openvpn config files
         create_config_files(args.create_conf_dir)
     else:
-        scan_vpns(args.directory, args.auth_file, args.crt_file,
-                  args.exclude_list, args.shuffle_lists)
+        scan_vpns(args.directory, args.auth_file, args.crt_file, args.exclude_list,
+                  args.shuffle_lists, args.include_list)
+
+    exit()
 
 if __name__ == "__main__":
     run()
