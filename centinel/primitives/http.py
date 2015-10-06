@@ -1,11 +1,11 @@
 import httplib
+import logging
 import threading
 import time
 from urlparse import urlparse
 
 
-def _get_http_request(host, path="/", headers=None, ssl=False,
-                external=None, url=None):
+def _get_http_request(host, path="/", headers=None, ssl=False):
     """
     Actually gets the http. Moved this to it's own private method since
     it is called several times for following redirects
@@ -14,15 +14,11 @@ def _get_http_request(host, path="/", headers=None, ssl=False,
     :param path:
     :param headers:
     :param ssl:
-    :param external:
-    :param url:
     :return:
     """
-    request  = {
-        "host"  : host,
-        "path"  : path,
-        "method": "GET"
-    }
+    request = {"host": host,
+               "path": path,
+               "method": "GET"}
 
     response = {}
 
@@ -49,7 +45,7 @@ def _get_http_request(host, path="/", headers=None, ssl=False,
         try:
             body.encode('utf8')
             response["body"] = body
-        except UnicodeDecodeError as err:
+        except UnicodeDecodeError:
             # if utf-8 fails to encode, just use base64
             response["body.b64"] = body.encode('base64')
 
@@ -57,21 +53,21 @@ def _get_http_request(host, path="/", headers=None, ssl=False,
     except Exception as err:
         response["failure"] = str(err)
 
-    result = {
-        "response" : response,
-        "request"  : request
-    }
+    result = {"response": response,
+              "request": request}
     return result
 
 
 def get_request(host, path="/", headers=None, ssl=False,
-                external=None, url=None):
+                external=None, url=None, log_prefix=''):
     http_results = {}
-    first_response = _get_http_request(host, path, headers, ssl, external, url)
+    first_response = _get_http_request(host, path, headers, ssl)
     if "failure" in first_response["response"]:  # If there was an error, just ignore redirects and return
         if external is not None and type(external) is dict:
             external[url] = first_response
         return first_response
+
+    logging.debug("%sSending HTTP GET request for %s." % (log_prefix, url))
 
     # Checks HTTP Status code and location header to see if the webpage calls for a redirect
     stat_starts_with_3 = str(first_response["response"]["status"]).startswith("3")
@@ -82,10 +78,9 @@ def get_request(host, path="/", headers=None, ssl=False,
     if is_redirecting:
         http_results["request"] = first_response["request"]
         http_results["redirects"] = {}
-        first_response_information = {}
-        first_response_information["response"] = first_response["response"]
-        first_response_information["host"] = host
-        first_response_information["path"] = path
+        first_response_information = {"response": first_response["response"],
+                                      "host": host,
+                                      "path": path}
         http_results["redirects"]["0"] = first_response_information
         redirect_http_result = None
         redirect_number = 1
@@ -118,11 +113,10 @@ def get_request(host, path="/", headers=None, ssl=False,
             if not stat_starts_with_3 or not response_headers_contains_location:
                 http_results["response"] = redirect_http_result["response"]
             else:  # Otherwise, put this in the redirects section
-                redirect_information = {}
-                redirect_information["host"] = parsed_url.netloc
-                redirect_information["path"] = parsed_url.path
-                redirect_information["full_url"] = redirect_url
-                redirect_information["response"] = redirect_http_result["response"]
+                redirect_information = {"host": parsed_url.netloc,
+                                        "path": parsed_url.path,
+                                        "full_url": redirect_url,
+                                        "response": redirect_http_result["response"]}
                 http_results["redirects"][str(redirect_number)] = redirect_information
 
             redirect_number += 1
@@ -135,6 +129,7 @@ def get_request(host, path="/", headers=None, ssl=False,
     if external is not None and type(external) is dict:
         external[url] = http_results
     return http_results
+
 
 def get_requests_batch(input_list, delay_time=0.5, max_threads=100):
     """
@@ -162,6 +157,8 @@ def get_requests_batch(input_list, delay_time=0.5, max_threads=100):
     threads = []
     thread_error = False
     thread_wait_timeout = 200
+    ind = 1
+    total_item_count = len(input_list)
     for row in input_list:
         headers = []
         path = "/"
@@ -206,10 +203,11 @@ def get_requests_batch(input_list, delay_time=0.5, max_threads=100):
         # add just a little bit of delay before starting the thread
         # to avoid overwhelming the connection.
         time.sleep(delay_time)
-
+        log_prefix = "%d/%d: " % (ind, total_item_count)
         thread = threading.Thread(target=get_request,
                                   args=(host, path, headers, ssl,
-                                        results, url))
+                                        results, url, log_prefix))
+        ind += 1
         thread.setDaemon(1)
         thread.start()
         threads.append(thread)
